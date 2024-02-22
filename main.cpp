@@ -2,6 +2,7 @@
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <random>
+#include <omp.h>
 
 struct CircleData {
     sf::CircleShape circle;
@@ -51,46 +52,56 @@ int main() {
         shapes[i] = createCircle(xPosition, yPosition, zPosition, opacity);
     }
 
-    // Sort the array based on depth, to draw from back to front
-    std::sort(shapes, shapes + numberOfShapes, [](const CircleData& a, const CircleData& b) {
-        return a.depth > b.depth;
-    });
+#pragma omp parallel
+    {
+#pragma omp sections
+        {
+#pragma omp section
+            {
+                // Sort the array based on depth, to draw from back to front
+                std::sort(shapes, shapes + numberOfShapes, [](const CircleData &a, const CircleData &b) {
+                    return a.depth > b.depth;
+                });
+            }
+#pragma omp section
+            {
+                sf::RenderWindow window(sf::VideoMode(sf::VideoMode::getDesktopMode().width,
+                                                      sf::VideoMode::getDesktopMode().height), "Renderer");
 
-    sf::RenderWindow window(sf::VideoMode(sf::VideoMode::getDesktopMode().width,
-                                          sf::VideoMode::getDesktopMode().height), "Renderer");
+                while (window.isOpen()) {
+                    sf::Event event;
+                    while (window.pollEvent(event)) {
+                        if (event.type == sf::Event::Closed) {
+                            //to save window image produced, file is saved to bin folder
+                            sf::Texture texture;
+                            texture.create(window.getSize().x, window.getSize().y);
+                            texture.update(window);
+                            sf::Image screenshot = texture.copyToImage();
+                            screenshot.saveToFile("screenshot.jpg");
 
-    while (window.isOpen()) {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed){
-                //to save window image produced, file is saved to bin folder
-                sf::Texture texture;
-                texture.create(window.getSize().x, window.getSize().y);
-                texture.update(window);
-                sf::Image screenshot = texture.copyToImage();
-                screenshot.saveToFile("screenshot.jpg");
+                            window.close();
+                        }
+                    }
 
-                window.close();
+                    //white background for aesthetic purposes
+                    window.clear(sf::Color::White);
+
+                    //drawing of circles from ordered array
+                    for (int i = 0; i < numberOfShapes; i++) {
+                        window.draw(shapes[i].circle);
+                    }
+
+                    window.display();
+
+                    //stop counting time here
+                    if (displayTime) {
+                        sf::Time elapsed = clock.getElapsedTime();
+                        std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds" << std::endl;
+                        displayTime = false;
+                    }
+                }
             }
         }
-
-        //white background for aesthetic purposes
-        window.clear(sf::Color::White);
-
-        //drawing of circles from ordered array
-        for (int i = 0; i < numberOfShapes; i++) {
-            window.draw(shapes[i].circle);
-        }
-
-        window.display();
-
-        //stop counting time here
-        if (displayTime) {
-            sf::Time elapsed = clock.getElapsedTime();
-            std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds" << std::endl;
-            displayTime = false;
-        }
-
     }
 
     return 0;
