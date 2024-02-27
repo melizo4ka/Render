@@ -3,6 +3,7 @@
 #include <iostream>
 #include <random>
 #include <omp.h>
+#include <X11/Xlib.h>
 
 struct CircleData {
     sf::CircleShape circle;
@@ -31,8 +32,17 @@ CircleData createCircle(int x, int y, int z, int opacity) {
 }
 
 int main() {
+    // Initialize Xlib for multi-threading
+    XInitThreads();
+
+    //checking of num of processors
+#ifdef _OPENMP
+    std::cout << "_OPENMP defined" << std::endl;
+    std::cout << "Num processors (Phys+HT): " << omp_get_num_procs() << std::endl;
+#endif
+
     //more than a 1000 can crash on my PC
-    int numberOfShapes = 1000;
+    int numberOfShapes = 1100;
 
     CircleData shapes[numberOfShapes];
 
@@ -40,6 +50,7 @@ int main() {
     bool displayTime = true;
     sf::Clock clock;
 
+#pragma omp parallel for
     for (int i = 0; i < numberOfShapes; i++) {
         //added condition of "-150" to have all circles drawn inside the window
         int xPosition = rand() % (sf::VideoMode::getDesktopMode().width - 150);
@@ -52,57 +63,51 @@ int main() {
         shapes[i] = createCircle(xPosition, yPosition, zPosition, opacity);
     }
 
+    // Sort the array based on depth, to draw from back to front
 #pragma omp parallel
     {
-#pragma omp sections
+#pragma omp single
         {
-#pragma omp section
-            {
-                // Sort the array based on depth, to draw from back to front
-                std::sort(shapes, shapes + numberOfShapes, [](const CircleData &a, const CircleData &b) {
-                    return a.depth > b.depth;
-                });
-            }
-#pragma omp section
-            {
-                sf::RenderWindow window(sf::VideoMode(sf::VideoMode::getDesktopMode().width,
-                                                      sf::VideoMode::getDesktopMode().height), "Renderer");
-
-                while (window.isOpen()) {
-                    sf::Event event;
-                    while (window.pollEvent(event)) {
-                        if (event.type == sf::Event::Closed) {
-                            //to save window image produced, file is saved to bin folder
-                            sf::Texture texture;
-                            texture.create(window.getSize().x, window.getSize().y);
-                            texture.update(window);
-                            sf::Image screenshot = texture.copyToImage();
-                            screenshot.saveToFile("screenshot.jpg");
-
-                            window.close();
-                        }
-                    }
-
-                    //white background for aesthetic purposes
-                    window.clear(sf::Color::White);
-
-                    //drawing of circles from ordered array
-                    for (int i = 0; i < numberOfShapes; i++) {
-                        window.draw(shapes[i].circle);
-                    }
-
-                    window.display();
-
-                    //stop counting time here
-                    if (displayTime) {
-                        sf::Time elapsed = clock.getElapsedTime();
-                        std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds" << std::endl;
-                        displayTime = false;
-                    }
-                }
-            }
+            std::sort(shapes, shapes + numberOfShapes, [](const CircleData &a, const CircleData &b) {
+                return a.depth > b.depth;
+            });
         }
     }
 
+    sf::RenderWindow window(sf::VideoMode(sf::VideoMode::getDesktopMode().width,
+                                          sf::VideoMode::getDesktopMode().height), "Renderer");
+
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) {
+                //to save window image produced, file is saved to bin folder
+                sf::Texture texture;
+                texture.create(window.getSize().x, window.getSize().y);
+                texture.update(window);
+                sf::Image screenshot = texture.copyToImage();
+                screenshot.saveToFile("screenshot.jpg");
+
+                window.close();
+            }
+        }
+
+        //white background for aesthetic purposes
+        window.clear(sf::Color::White);
+
+        /*
+        //drawing of circles from ordered array
+        for (int i = 0; i < numberOfShapes; i++) {
+            window.draw(shapes[i].circle);
+        }
+*/
+        //stop counting time here
+        if (displayTime) {
+            sf::Time elapsed = clock.getElapsedTime();
+            std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds" << std::endl;
+            displayTime = false;
+        }
+
+    }
     return 0;
 }

@@ -17,4 +17,7 @@ target_link_libraries(Render
         OpenMP::OpenMP_CXX)
 target_compile_features(Render PRIVATE cxx_std_17)
 
+find_package(X11 REQUIRED)
+target_link_libraries(Render PRIVATE ${X11_LIBRARIES})
+
 install(TARGETS Render)
