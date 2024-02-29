@@ -45,71 +45,88 @@ int main() {
     std::cout << "Num processors (Phys+HT): " << omp_get_num_procs() << std::endl;
 #endif
 
-    //more than a 1000 can crash on my PC for sequential
-    int numberOfShapes = 10000;
-    CircleData shapes[numberOfShapes];
+    // Set a flag to decide whether to execute the parallel loop or not
+    bool executeParallelLoop = true;
+    if (executeParallelLoop)
+        std::cout << "This is parallel execution." << std::endl;
+    else
+        std::cout << "This is sequential execution." << std::endl;
+    int differentNoS[] = {10, 100, 500, 1000, 10000, 20000};
 
-    //variable to get time til image is displayed
-    bool displayTime = true;
-    sf::Clock clock;
+    for (int numberOfShapes : differentNoS){
+        CircleData shapes[numberOfShapes];
 
-    //random generate for colours
-    std::random_device rdp;
-    std::mt19937 genPos(rdp());
-    std::uniform_int_distribution<int> posXDist(0, sf::VideoMode::getDesktopMode().width - 150);
-    std::uniform_int_distribution<int> posYDist(0, sf::VideoMode::getDesktopMode().height - 150);
-    std::uniform_int_distribution<int> posZDist(0, 50);
+        //variable to get time til image is displayed
+        bool displayTime = true;
+        sf::Clock clock;
 
-#pragma omp parallel for
-    for (int i = 0; i < numberOfShapes; i++) {
-        int xPosition = posXDist(genPos);
-        int yPosition = posYDist(genPos);
-        int zPosition = posZDist(genPos);
-        int opacity = 50;
+        //random generate for colours
+        std::random_device rdp;
+        std::mt19937 genPos(rdp());
+        std::uniform_int_distribution<int> posXDist(0, sf::VideoMode::getDesktopMode().width - 150);
+        std::uniform_int_distribution<int> posYDist(0, sf::VideoMode::getDesktopMode().height - 150);
+        std::uniform_int_distribution<int> posZDist(0, 50);
 
-        //creating shaped one at a time and storing into array
-        shapes[i] = createCircle(xPosition, yPosition, zPosition, opacity);
-    }
-
-    // Sort the array based on depth, to draw from back to front
-    std::sort(shapes, shapes + numberOfShapes, [](const CircleData& a, const CircleData& b) {
-        return a.depth > b.depth;
-    });
-
-
-    sf::RenderWindow window(sf::VideoMode(sf::VideoMode::getDesktopMode().width,
-                                          sf::VideoMode::getDesktopMode().height), "Renderer");
-
-    while (window.isOpen()) {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed){
-                //to save window image produced, file is saved to bin folder
-                sf::Texture texture;
-                texture.create(window.getSize().x, window.getSize().y);
-                texture.update(window);
-                sf::Image screenshot = texture.copyToImage();
-                screenshot.saveToFile("screenshot.jpg");
-                window.close();
-            }
-        }
-
-        //white background for aesthetic purposes
-        window.clear(sf::Color::White);
-
-#pragma omp for
-        //drawing of circles from ordered array
+#pragma omp parallel for if(executeParallelLoop)
         for (int i = 0; i < numberOfShapes; i++) {
-            window.draw(shapes[i].circle);
+            int xPosition = posXDist(genPos);
+            int yPosition = posYDist(genPos);
+            int zPosition = posZDist(genPos);
+            int opacity = 50;
+
+            //creating shaped one at a time and storing into array
+            shapes[i] = createCircle(xPosition, yPosition, zPosition, opacity);
         }
 
-        window.display();
+        // Sort the array based on depth, to draw from back to front
+        std::sort(shapes, shapes + numberOfShapes, [](const CircleData& a, const CircleData& b) {
+            return a.depth > b.depth;
+        });
 
-        //stop counting time here
-        if (displayTime) {
-            sf::Time elapsed = clock.getElapsedTime();
-            std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds" << std::endl;
-            displayTime = false;
+
+        sf::RenderWindow window(sf::VideoMode(sf::VideoMode::getDesktopMode().width,
+                                              sf::VideoMode::getDesktopMode().height), "Renderer");
+
+        while (window.isOpen()) {
+            sf::Event event;
+            while (window.pollEvent(event)) {
+                if (event.type == sf::Event::Closed){
+                    //to save window image produced, file is saved to bin folder
+                    sf::Texture texture;
+                    texture.create(window.getSize().x, window.getSize().y);
+                    texture.update(window);
+                    sf::Image screenshot = texture.copyToImage();
+                    screenshot.saveToFile("screenshot.jpg");
+                    window.close();
+                }
+            }
+
+            //white background for aesthetic purposes
+            window.clear(sf::Color::White);
+
+            if (executeParallelLoop) {
+#pragma omp for
+                //drawing of circles from ordered array
+                for (int i = 0; i < numberOfShapes; i++) {
+                    window.draw(shapes[i].circle);
+                }
+            }
+            else{
+                //drawing of circles from ordered array
+                for (int i = 0; i < numberOfShapes; i++) {
+                    window.draw(shapes[i].circle);
+                }
+            }
+
+            window.display();
+
+            //stop counting time here
+            if (displayTime) {
+                sf::Time elapsed = clock.getElapsedTime();
+                std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds for " << numberOfShapes << " shapes." << std::endl;
+                displayTime = false;
+            }
+
         }
 
     }
