@@ -12,9 +12,15 @@ struct CircleData {
 
 CircleData createCircle(int x, int y, int z, int opacity) {
     CircleData data;
-    data.circle.setRadius(50.f);
-    data.circle.setPosition(static_cast<float>(x), static_cast<float>(y));
 
+    //random radius for circles
+    std::random_device rdr;
+    std::mt19937 genRad(rdr());
+    std::uniform_int_distribution<int> radiusDist(5, 50);
+    int radius = radiusDist(genRad);
+    data.circle.setRadius(static_cast<float>(radius));
+
+    data.circle.setPosition(static_cast<float>(x), static_cast<float>(y));
     //random generate for colours
     std::random_device rdc;
     std::mt19937 genCol(rdc());
@@ -25,7 +31,6 @@ CircleData createCircle(int x, int y, int z, int opacity) {
     colour[1] = colorDist(genCol);
     colour[2] = colorDist(genCol);
     data.circle.setFillColor(sf::Color(colour[0], colour[1], colour[2], opacity));
-
     data.depth = z;
 
     return data;
@@ -40,10 +45,10 @@ int main() {
     std::cout << "Num processors (Phys+HT): " << omp_get_num_procs() << std::endl;
 #endif
 
-    //more than a 1000 can crash on my PC
+    //more than a 1000 can crash on my PC for sequential
     int numberOfShapes = 10000;
-
     CircleData shapes[numberOfShapes];
+
     //variable to get time til image is displayed
     bool displayTime = true;
     sf::Clock clock;
@@ -85,7 +90,6 @@ int main() {
                 texture.update(window);
                 sf::Image screenshot = texture.copyToImage();
                 screenshot.saveToFile("screenshot.jpg");
-
                 window.close();
             }
         }
