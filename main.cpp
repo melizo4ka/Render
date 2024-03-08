@@ -3,6 +3,8 @@
 #include <iostream>
 #include <random>
 #include <sstream>
+#include <matplot/matplot.h>
+using namespace matplot;
 
 
 struct CircleData {
@@ -40,7 +42,7 @@ int main() {
     std::vector<float> seqTimes;
     std::vector<float> speedup;
     // first value should be discarded
-    int differentNoS[] = {0, 10, 100, 500, 1000, 10000, 20000};
+    std::vector<int> differentNoS = {0, 10, 100, 500, 1000, 10000, 20000};
 
     // parallel section
     bool executeParallelLoop = true;
@@ -192,6 +194,10 @@ int main() {
         std::cout << element << " ";
     }
     std::cout << std::endl;
+
+    // this plots how execution times change
+    plot(differentNoS, seqTimes, differentNoS, parTimes, "--");
+    show();
 
     return 0;
 }
