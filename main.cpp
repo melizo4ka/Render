@@ -73,23 +73,21 @@ CircleData createCircle(int x, int y, int z, std::mt19937 gen) {
 }
 
 bool pixelInCircle(const sf::CircleShape& circle, int xPos, int yPos) {
-    double distance = sqrt(pow(xPos - circle.getPosition().x, 2) + pow(yPos - circle.getPosition().y, 2));
-    if(distance <= circle.getRadius())
+    double distance = sqrt(pow(xPos - circle.getPosition().x - circle.getRadius(), 2) + pow(yPos - circle.getPosition().y - circle.getRadius(), 2));
+    if(distance - 0.5 <= circle.getRadius())
         return true;
     else
         return false;
 }
 
-// if Color1 is on the bottom and Color2 is on the top
+// if Color2 is on the bottom and Color1 is on the top
 sf::Color blendColors(const sf::Color& color2, int opacity2, const sf::Color& color1, int opacity1) {
     float alpha1 = static_cast<float>(opacity1) / 255.0f;
     float alpha2 = static_cast<float>(opacity2) / 255.0f;
-    float resultAlpha = alpha1 + alpha2 * (1 - alpha1);
     sf::Color resultColor;
     resultColor.r = static_cast<sf::Uint8>((color1.r * alpha1) + (color2.r * alpha2 * (1 - alpha1)));
     resultColor.g = static_cast<sf::Uint8>((color1.g * alpha1) + (color2.g * alpha2 * (1 - alpha1)));
     resultColor.b = static_cast<sf::Uint8>((color1.b * alpha1) + (color2.b * alpha2 * (1 - alpha1)));
-    //resultColor.a = static_cast<sf::Uint8>(resultAlpha * 255);
 
     return resultColor;
 }
@@ -118,7 +116,8 @@ sf::Image bitmapToImage(BitMap& bitmap) {
     for (int y = 0; y < bitmap.height; ++y) {
         for (int x = 0; x < bitmap.width; ++x) {
             PixelData pixel = bitmap.getPixel(x, y);
-            image.setPixel(x, y, sf::Color(pixel.pixelColour.r, pixel.pixelColour.g, pixel.pixelColour.b, pixel.pixelColour.a));
+            image.setPixel(x, y, sf::Color(pixel.pixelColour.r, pixel.pixelColour.g,
+                                           pixel.pixelColour.b, pixel.pixelColour.a));
         }
     }
 
@@ -131,19 +130,20 @@ int main() {
     std::vector<float> seqTimes;
     std::vector<float> speedup;
 
-    std::vector<int> differentNoS = {5};
+    std::vector<int> differentNoS = {60};
     int maxDepth = 20;
 
-    int imgWidth = 1000;
-    int imgHeight = 1000;
+    int imgWidth = 700;
+    int imgHeight = 700;
+    int offsetCenter = 20;
 
     //the same random device for all random numbers
     std::random_device rd;
     std::mt19937 gen(rd());
 
     // randomizer for circle center position
-    std::uniform_int_distribution<int> posXDist(0, imgWidth);
-    std::uniform_int_distribution<int> posYDist(0, imgHeight);
+    std::uniform_int_distribution<int> posXDist(0, imgWidth - 2 * offsetCenter);
+    std::uniform_int_distribution<int> posYDist(0, imgHeight - 2 * offsetCenter);
     std::uniform_int_distribution<int> posZDist(0, maxDepth);
 
     int numberOfShapes = differentNoS[0];
@@ -162,6 +162,7 @@ int main() {
             int zPosition = posZDist(gen);
 
             shapes[i] = createCircle(xPosition, yPosition, zPosition, gen);
+
         }
 
         // Sort the array based on depth, to draw from back to front
@@ -211,10 +212,9 @@ int main() {
     std::cout << "Start of parallel execution." << std::endl;
     bool displayTime = true;
 
-# pragma omp parallel for shared(differentNoS, imgHeight, imgWidth, shapes) default (none)
+//# pragma omp parallel for shared(differentNoS, imgHeight, imgWidth, shapes) default (none)
 
     for (int numberOfShapes : differentNoS) {
-        printf("Maximum number of threads after: %d\n", omp_get_num_threads());
 
         BitMap bitmap(imgWidth, imgHeight);
 
