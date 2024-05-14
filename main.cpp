@@ -130,7 +130,6 @@ int main() {
     std::vector<float> seqTimes;
     std::vector<float> speedup;
 
-    std::vector<int> differentNoS = {60};
     int maxDepth = 20;
 
     int imgWidth = 700;
@@ -146,79 +145,72 @@ int main() {
     std::uniform_int_distribution<int> posYDist(0, imgHeight - 2 * offsetCenter);
     std::uniform_int_distribution<int> posZDist(0, maxDepth);
 
-    int numberOfShapes = differentNoS[0];
-    CircleData shapes[numberOfShapes];
+    std::vector<int> differentNoS = {0, 5, 500};
 
-    // TODO creating of shapes separately
 
-    std::cout << "Start of sequential execution." << std::endl;
-    for (int numberOfShapes : differentNoS){
+    for (int numberOfShapes : differentNoS) {
         bool displayTime = true;
-        sf::Clock clock;
+        CircleData shapes[numberOfShapes];
 
+        // creation of cicles, not accounting that into the program's time
         for (int i = 0; i < numberOfShapes; i++) {
             int xPosition = posXDist(gen);
             int yPosition = posYDist(gen);
             int zPosition = posZDist(gen);
-
             shapes[i] = createCircle(xPosition, yPosition, zPosition, gen);
-
         }
 
+        std::cout << "Start of sequential execution." << std::endl;
+        sf::Clock clockSeq;
+
         // Sort the array based on depth, to draw from back to front
-        std::sort(shapes, shapes + numberOfShapes, [](const CircleData& a, const CircleData& b) {
+        std::sort(shapes, shapes + numberOfShapes, [](const CircleData &a, const CircleData &b) {
             return a.depth > b.depth;
         });
 
-        sf::RenderWindow window(sf::VideoMode(imgWidth,
-                                              imgHeight),"Renderer Sequential");
+        sf::RenderWindow windowSeq(sf::VideoMode(imgWidth,
+                                                 imgHeight), "Renderer Sequential");
 
-        while (window.isOpen()) {
+        while (windowSeq.isOpen()) {
             sf::Event event;
-            while (window.pollEvent(event)) {
-                if (event.type == sf::Event::Closed){
+            while (windowSeq.pollEvent(event)) {
+                if (event.type == sf::Event::Closed) {
                     std::ostringstream filenameStream;
                     filenameStream << "screenSeq_" << numberOfShapes << "Shapes.jpg";
                     std::string filename = filenameStream.str();
                     sf::Texture texture;
-                    texture.create(window.getSize().x, window.getSize().y);
-                    texture.update(window);
+                    texture.create(windowSeq.getSize().x, windowSeq.getSize().y);
+                    texture.update(windowSeq);
                     sf::Image screenshot = texture.copyToImage();
                     screenshot.saveToFile(filename);
-                    window.close();
+                    windowSeq.close();
                 }
             }
-            window.clear();
+            windowSeq.clear();
 
             for (int i = 0; i < numberOfShapes; i++) {
-                window.draw(shapes[i].circle);
+                windowSeq.draw(shapes[i].circle);
             }
-            window.display();
+            windowSeq.display();
 
             if (displayTime) {
-                sf::Time elapsed = clock.getElapsedTime();
-                // std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds for " << numberOfShapes << " shapes." << std::endl;
+                sf::Time elapsed = clockSeq.getElapsedTime();
+                std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds for " << numberOfShapes << " shapes."
+                          << std::endl;
                 seqTimes.push_back(elapsed.asSeconds());
                 displayTime = false;
             }
 
         }
 
-    }
-
-    std::cout << std::endl;
-
-
-    std::cout << "Start of parallel execution." << std::endl;
-    bool displayTime = true;
-
-//# pragma omp parallel for shared(differentNoS, imgHeight, imgWidth, shapes) default (none)
-
-    for (int numberOfShapes : differentNoS) {
-
-        BitMap bitmap(imgWidth, imgHeight);
+        std::cout << "Start of parallel execution." << std::endl;
+        displayTime = true;
+        sf::Clock clockPar;
 
         //iterations to create the bitmap pixel by pixel
+        BitMap bitmap(imgWidth, imgHeight);
+
+#pragma omp parallel for collapse(2) default(none) shared(bitmap, shapes, numberOfShapes, imgWidth, imgHeight)
         for (int j = 0; j < imgHeight; j++) {
             for (int i = 0; i < imgWidth; i++) {
                 //creating new data structure
@@ -233,14 +225,14 @@ int main() {
                 }
 
                 // this part of the code is not used for now since shapes is already ordered in the sequential section
-                /*if (!influences.empty()) {
-                    if (influences.size()> 1) {
+                if (!influences.empty()) {
+                    if (influences.size() > 1) {
                         std::sort(influences.begin(), influences.end(),
                                   [](const circleInfluence &a, const circleInfluence &b) {
                                       return a.depth > b.depth;
                                   });
                     }
-                }*/
+                }
 
                 if (influences.size() > 1) {
                     sf::Color finalColor = calculateRGBA(influences);
@@ -254,48 +246,57 @@ int main() {
         }
 
         sf::Image image = bitmapToImage(bitmap);
-        sf::RenderWindow window(sf::VideoMode(imgWidth,
-                                              imgHeight), "Renderer Parallel");
+        sf::RenderWindow windowPar(sf::VideoMode(imgWidth,
+                                                 imgHeight), "Renderer Parallel");
 
-        while (window.isOpen()) {
+        while (windowPar.isOpen()) {
             sf::Event event;
-            while (window.pollEvent(event)) {
+            while (windowPar.pollEvent(event)) {
                 if (event.type == sf::Event::Closed) {
 
                     std::ostringstream filenameStream;
                     filenameStream << "screenPar_" << numberOfShapes << "Shapes.jpg";
                     std::string filename = filenameStream.str();
                     sf::Texture texture;
-                    texture.create(window.getSize().x, window.getSize().y);
-                    texture.update(window);
+                    texture.create(windowPar.getSize().x, windowPar.getSize().y);
+                    texture.update(windowPar);
                     sf::Image screenshot = texture.copyToImage();
                     screenshot.saveToFile(filename);
-                    window.close();
+                    windowPar.close();
                 }
             }
-            window.clear();
+            windowPar.clear();
             sf::Texture texture;
             texture.loadFromImage(image);
             sf::Sprite sprite(texture);
-            window.draw(sprite);
-            window.display();
+            windowPar.draw(sprite);
+            windowPar.display();
+
+
+            if (displayTime) {
+                sf::Time elapsed = clockPar.getElapsedTime();
+                std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds for " << numberOfShapes << " shapes."
+                          << std::endl;
+                parTimes.push_back(elapsed.asSeconds());
+                displayTime = false;
+            }
         }
     }
-
 //SPEED UP CALCULATOR
-/*
+
     for (size_t i = 0; i < seqTimes.size(); ++i) {
-        double result = seqTimes[i] / parTimes[i];
+        float result = seqTimes[i] / parTimes[i];
         speedup.push_back(result);
     }
     // Print the result vector
     std::cout << "Result vector for speedup: ";
-    for (const auto &element : speedup) {
-        std::cout << element << " ";
+    for (float i : speedup) {
+        std::cout << i << " ";
     }
     std::cout << std::endl;
 
-*/
+
+
 
     return 0;
 }
