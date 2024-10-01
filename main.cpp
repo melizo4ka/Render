@@ -145,7 +145,7 @@ int main() {
     std::uniform_int_distribution<int> posYDist(0, imgHeight - 2 * offsetCenter);
     std::uniform_int_distribution<int> posZDist(0, maxDepth);
 
-    std::vector<int> differentNoS = {0, 5, 500};
+    std::vector<int> differentNoS = {0, 5, 50, 250, 500, 1000, 2000};
 
 
     for (int numberOfShapes : differentNoS) {
@@ -210,41 +210,60 @@ int main() {
         //iterations to create the bitmap pixel by pixel
         BitMap bitmap(imgWidth, imgHeight);
 
-#pragma omp parallel for collapse(2) default(none) shared(bitmap, shapes, numberOfShapes, imgWidth, imgHeight)
-        for (int j = 0; j < imgHeight; j++) {
-            for (int i = 0; i < imgWidth; i++) {
-                //creating new data structure
-                std::vector<circleInfluence> influences;
-                // iterate over all the circles
-                for (int n = 0; n < numberOfShapes; n++) {
-                    // call checker
-                    if (pixelInCircle(shapes[n].circle, i, j)) {
-                        // if the condition is true then we add info of that circle in the data structure
-                        influences.emplace_back(shapes[n].depth, shapes[n].circle.getFillColor());
-                    }
-                }
+        omp_set_num_threads(2);
+#pragma omp parallel default(none) shared(bitmap, shapes, numberOfShapes, imgWidth, imgHeight, cout)
+        {
+            //#pragma omp single
+            //std::cout << "Number of threads: " << omp_get_num_threads() << std::endl;
 
-                // this part of the code is not used for now since shapes is already ordered in the sequential section
-                if (!influences.empty()) {
+#pragma omp for collapse(2) schedule(dynamic,1) nowait
+            for (int j = 0; j < imgHeight; j++) {
+                for (int i = 0; i < imgWidth; i++) {
+                    //creating new data structure
+                    std::vector<circleInfluence> influences;
+                    // iterate over all the circles
+                    for (int n = 0; n < numberOfShapes; n++) {
+                        // call checker
+                        if (pixelInCircle(shapes[n].circle, i, j)) {
+                            // if the condition is true then we add info of that circle in the data structure
+                            influences.emplace_back(shapes[n].depth, shapes[n].circle.getFillColor());
+                        }
+                    }
+
+                    // this part of the code is not used for now since shapes is already ordered in the sequential section
+                    if (!influences.empty()) {
+                        if (influences.size() > 1) {
+                            std::sort(influences.begin(), influences.end(),
+                                      [](const circleInfluence &a, const circleInfluence &b) {
+                                          return a.depth > b.depth;
+                                      });
+
+                        }
+                    }
+                    sf::Color finalColor;
                     if (influences.size() > 1) {
-                        std::sort(influences.begin(), influences.end(),
-                                  [](const circleInfluence &a, const circleInfluence &b) {
-                                      return a.depth > b.depth;
-                                  });
+                        finalColor = calculateRGBA(influences);
+                        //bitmap.getPixel(i, j).pixelColour = finalColor;
+                    } else {
+                        // just put values into bitmap
+                        if (!influences.empty())
+                            finalColor = influences[0].infColour;
+                            //bitmap.getPixel(i, j).pixelColour = influences[0].infColour;
                     }
-                }
+                    #pragma omp atomic write
+                    bitmap.getPixel(i, j).pixelColour.r = finalColor.r;
 
-                if (influences.size() > 1) {
-                    sf::Color finalColor = calculateRGBA(influences);
-                    bitmap.getPixel(i, j).pixelColour = finalColor;
-                } else {
-                    // just put values into bitmap
-                    if (!influences.empty())
-                        bitmap.getPixel(i, j).pixelColour = influences[0].infColour;
+                    #pragma omp atomic write
+                    bitmap.getPixel(i, j).pixelColour.g = finalColor.g;
+
+                    #pragma omp atomic write
+                    bitmap.getPixel(i, j).pixelColour.b = finalColor.b;
+
+                    #pragma omp atomic write
+                    bitmap.getPixel(i, j).pixelColour.a = finalColor.a;
                 }
             }
         }
-
         sf::Image image = bitmapToImage(bitmap);
         sf::RenderWindow windowPar(sf::VideoMode(imgWidth,
                                                  imgHeight), "Renderer Parallel");
@@ -294,9 +313,6 @@ int main() {
         std::cout << i << " ";
     }
     std::cout << std::endl;
-
-
-
 
     return 0;
 }
