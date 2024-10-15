@@ -3,6 +3,7 @@
 #include <iostream>
 #include <random>
 #include <sstream>
+#include <map>
 #include <omp.h>
 using namespace std;
 
@@ -30,7 +31,7 @@ struct PixelData {
         pixelColour.r = 0;
         pixelColour.g = 0;
         pixelColour.b = 0;
-        pixelColour.a = 1;
+        pixelColour.a = 255;
     }
 };
 
@@ -41,6 +42,9 @@ struct BitMap {
 
     BitMap(int w, int h) : width(w), height(h) {
         pixels.resize(height, std::vector<PixelData>(width));
+    }
+
+    BitMap() : width(0), height(0) {
     }
 
     PixelData& getPixel(int x, int y) {
@@ -80,14 +84,30 @@ bool pixelInCircle(const sf::CircleShape& circle, int xPos, int yPos) {
         return false;
 }
 
+sf::Color blendColors(const sf::Color& color2, const sf::Color& color1) {
+    float alpha1 = static_cast<float>(color1.a) / 255.0f;
+    float alpha2 = static_cast<float>(color2.a) / 255.0f;
+
+    sf::Color resultColor;
+    resultColor.r = static_cast<sf::Uint8>((color1.r + color2.r) / 2);
+    resultColor.g = static_cast<sf::Uint8>((color1.g + color2.g) / 2);
+    resultColor.b = static_cast<sf::Uint8>((color1.b + color2.b) / 2);
+    resultColor.a = static_cast<sf::Uint8>(((alpha1+ alpha2) / 2) * 255.0f);
+
+    return resultColor;
+}
+
 // if Color2 is on the bottom and Color1 is on the top
-sf::Color blendColors(const sf::Color& color2, int opacity2, const sf::Color& color1, int opacity1) {
-    float alpha1 = static_cast<float>(opacity1) / 255.0f;
-    float alpha2 = static_cast<float>(opacity2) / 255.0f;
+sf::Color blendColorsBitmaps(const sf::Color& color2, const sf::Color& color1) {
+    float alpha1 = static_cast<float>(color1.a) / 255.0f;
+    float alpha2 = static_cast<float>(color2.a) / 255.0f;
+    float resultAlpha = alpha1 + alpha2 * (1 - alpha1);
+
     sf::Color resultColor;
     resultColor.r = static_cast<sf::Uint8>((color1.r * alpha1) + (color2.r * alpha2 * (1 - alpha1)));
     resultColor.g = static_cast<sf::Uint8>((color1.g * alpha1) + (color2.g * alpha2 * (1 - alpha1)));
     resultColor.b = static_cast<sf::Uint8>((color1.b * alpha1) + (color2.b * alpha2 * (1 - alpha1)));
+    resultColor.a = static_cast<sf::Uint8>(resultAlpha * 255.0f);
 
     return resultColor;
 }
@@ -95,14 +115,12 @@ sf::Color blendColors(const sf::Color& color2, int opacity2, const sf::Color& co
 sf::Color calculateRGBA (const std::vector<circleInfluence>& influences){
     sf::Color result;
     sf::Color inter_result;
-    result = blendColors( influences[0].infColour, influences[0].infColour.a,
-                          influences[1].infColour, influences[1].infColour.a);
+    result = blendColors( influences[0].infColour, influences[1].infColour);
     if (influences.size() == 2)
         return result;
     else{
         for (int k = 2; k < influences.size(); k++){
-            inter_result = blendColors( result, result.a,
-                                        influences[k].infColour, influences[k].infColour.a);
+            inter_result = blendColors( result,influences[k].infColour);
             result = inter_result;
         }
         return result;
@@ -145,10 +163,10 @@ int main() {
     std::uniform_int_distribution<int> posYDist(0, imgHeight - 2 * offsetCenter);
     std::uniform_int_distribution<int> posZDist(0, maxDepth);
 
-    std::vector<int> differentNoS = {0, 5, 50, 250, 500, 1000, 2000};
+    std::vector<int> differentNoS = {2000};
 
 
-    for (int numberOfShapes : differentNoS) {
+    for (int numberOfShapes: differentNoS) {
         bool displayTime = true;
         CircleData shapes[numberOfShapes];
 
@@ -171,6 +189,14 @@ int main() {
         sf::RenderWindow windowSeq(sf::VideoMode(imgWidth,
                                                  imgHeight), "Renderer Sequential");
 
+        if (displayTime) {
+            sf::Time elapsed = clockSeq.getElapsedTime();
+            std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds for " << numberOfShapes << " shapes."
+                      << std::endl;
+            seqTimes.push_back(elapsed.asSeconds());
+            displayTime = false;
+        }
+
         while (windowSeq.isOpen()) {
             sf::Event event;
             while (windowSeq.pollEvent(event)) {
@@ -189,21 +215,15 @@ int main() {
             windowSeq.clear();
 
             for (int i = 0; i < numberOfShapes; i++) {
+                //if(shapes[i].depth == 0)
                 windowSeq.draw(shapes[i].circle);
             }
             windowSeq.display();
 
-            if (displayTime) {
-                sf::Time elapsed = clockSeq.getElapsedTime();
-                std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds for " << numberOfShapes << " shapes."
-                          << std::endl;
-                seqTimes.push_back(elapsed.asSeconds());
-                displayTime = false;
-            }
 
         }
-
-        std::cout << "Start of parallel execution." << std::endl;
+/*
+        std::cout << "Start of parallel execution (First Version)." << std::endl;
         displayTime = true;
         sf::Clock clockPar;
 
@@ -216,7 +236,7 @@ int main() {
             //#pragma omp single
             //std::cout << "Number of threads: " << omp_get_num_threads() << std::endl;
 
-#pragma omp for collapse(2) schedule(dynamic,1) nowait
+#pragma omp for collapse(2) schedule(dynamic, 1) nowait
             for (int j = 0; j < imgHeight; j++) {
                 for (int i = 0; i < imgWidth; i++) {
                     //creating new data structure
@@ -248,18 +268,18 @@ int main() {
                         // just put values into bitmap
                         if (!influences.empty())
                             finalColor = influences[0].infColour;
-                            //bitmap.getPixel(i, j).pixelColour = influences[0].infColour;
+                        //bitmap.getPixel(i, j).pixelColour = influences[0].infColour;
                     }
-                    #pragma omp atomic write
+#pragma omp atomic write
                     bitmap.getPixel(i, j).pixelColour.r = finalColor.r;
 
-                    #pragma omp atomic write
+#pragma omp atomic write
                     bitmap.getPixel(i, j).pixelColour.g = finalColor.g;
 
-                    #pragma omp atomic write
+#pragma omp atomic write
                     bitmap.getPixel(i, j).pixelColour.b = finalColor.b;
 
-                    #pragma omp atomic write
+#pragma omp atomic write
                     bitmap.getPixel(i, j).pixelColour.a = finalColor.a;
                 }
             }
@@ -267,6 +287,14 @@ int main() {
         sf::Image image = bitmapToImage(bitmap);
         sf::RenderWindow windowPar(sf::VideoMode(imgWidth,
                                                  imgHeight), "Renderer Parallel");
+
+        if (displayTime) {
+            sf::Time elapsed = clockPar.getElapsedTime();
+            std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds for " << numberOfShapes << " shapes."
+                      << std::endl;
+            parTimes.push_back(elapsed.asSeconds());
+            displayTime = false;
+        }
 
         while (windowPar.isOpen()) {
             sf::Event event;
@@ -292,17 +320,107 @@ int main() {
             windowPar.display();
 
 
-            if (displayTime) {
-                sf::Time elapsed = clockPar.getElapsedTime();
-                std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds for " << numberOfShapes << " shapes."
-                          << std::endl;
-                parTimes.push_back(elapsed.asSeconds());
-                displayTime = false;
+        }
+
+*/
+        std::cout << "Start of parallel execution (Second version)." << std::endl;
+        displayTime = true;
+        sf::Clock clockPar;
+
+        const int numBitmaps = maxDepth + 1;
+        std::map<int, BitMap> bitmapsWithDepth;
+
+        for (int i = 0; i <= numBitmaps; ++i) {
+            int depth = i;
+            BitMap bitmap(imgWidth, imgHeight);
+            bitmapsWithDepth.emplace(depth, std::move(bitmap));
+        }
+
+        BitMap bitmapFinal(imgWidth, imgHeight);
+
+        //#pragma omp parallel for default(none) shared(bitmapsWithDepth, shapes, numberOfShapes, imgWidth, imgHeight)
+        for (int n = 0; n < numberOfShapes; n++) {
+            float radius = shapes[n].circle.getRadius();
+            float centerX = shapes[n].circle.getPosition().x + radius;
+            float centerY = shapes[n].circle.getPosition().y + radius;
+            for (int j = static_cast<int>(centerY - radius); j <= static_cast<int>(centerY + radius); j++) {
+                for (int i = static_cast<int>(centerX - radius); i <= static_cast<int>(centerX + radius); i++){
+                    // need to check if that particular pixel is inside the circle and if the pixel is inside the window
+                    if (pixelInCircle(shapes[n].circle, i, j) && i >= 0 && i < imgWidth &&
+                            j >= 0 && j <= imgHeight) {
+
+                        BitMap& bitmapTmp = bitmapsWithDepth[shapes[n].depth];
+                        sf::Color colorTmp = bitmapTmp.getPixel(i, j).pixelColour;
+                        // check if there is already a colour written in that pixel
+                        //TODO add atomic for writing
+                        if((int)colorTmp.r == 0 && (int)colorTmp.g == 0 && (int)colorTmp.b == 0 && (int)colorTmp.a == 255)
+                            bitmapTmp.getPixel(i, j).pixelColour = shapes[n].circle.getFillColor();
+                        else
+                            // do the blending
+                            bitmapTmp.getPixel(i, j).pixelColour = blendColors(colorTmp, shapes[n].circle.getFillColor());
+                    }
+                }
             }
         }
-    }
-//SPEED UP CALCULATOR
 
+        //#pragma omp for collapse(2)
+        for (int j = 0; j < imgHeight; ++j) {
+            for (int i = 0; i < imgWidth; ++i) {
+                // Iterate through all bitmaps (corresponding to different depths)
+                //for (int k = 0; k >= 0; k--){
+                for (int k = numBitmaps; k >= 0; k--) {
+                    sf::Color colorTmp = bitmapsWithDepth[k].getPixel(i, j).pixelColour;
+                    if ((int)colorTmp.r != 0 || (int)colorTmp.g != 0 || (int)colorTmp.b != 0 || (int)colorTmp.a != 255) {
+                        // blend colors
+                        bitmapFinal.getPixel(i, j).pixelColour =
+                                blendColorsBitmaps(bitmapFinal.getPixel(i, j).pixelColour,colorTmp);
+                    }
+                }
+            }
+        }
+
+        sf::Image image = bitmapToImage(bitmapFinal);
+        sf::RenderWindow windowPar(sf::VideoMode(imgWidth,
+                                                 imgHeight), "Renderer Parallel");
+
+        if (displayTime) {
+            sf::Time elapsed = clockPar.getElapsedTime();
+            std::cout << "Elapsed time: " << elapsed.asSeconds() << " seconds for " << numberOfShapes << " shapes."
+                      << std::endl;
+            parTimes.push_back(elapsed.asSeconds());
+            displayTime = false;
+        }
+
+        while (windowPar.isOpen()) {
+            sf::Event event;
+            while (windowPar.pollEvent(event)) {
+                if (event.type == sf::Event::Closed) {
+
+                    std::ostringstream filenameStream;
+                    filenameStream << "screenPar_" << numberOfShapes << "Shapes.jpg";
+                    std::string filename = filenameStream.str();
+                    sf::Texture texture;
+                    texture.create(windowPar.getSize().x, windowPar.getSize().y);
+                    texture.update(windowPar);
+                    sf::Image screenshot = texture.copyToImage();
+                    screenshot.saveToFile(filename);
+                    windowPar.close();
+                }
+            }
+            windowPar.clear();
+            sf::Texture texture;
+            texture.loadFromImage(image);
+            sf::Sprite sprite(texture);
+            windowPar.draw(sprite);
+            windowPar.display();
+
+        }
+
+
+    }
+
+//SPEED UP CALCULATOR
+/*
     for (size_t i = 0; i < seqTimes.size(); ++i) {
         float result = seqTimes[i] / parTimes[i];
         speedup.push_back(result);
@@ -312,7 +430,7 @@ int main() {
     for (float i : speedup) {
         std::cout << i << " ";
     }
-    std::cout << std::endl;
+    std::cout << std::endl;*/
 
     return 0;
 }
